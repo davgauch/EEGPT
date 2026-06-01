@@ -1,12 +1,10 @@
-# Sleep-EDF Adaptation — Master's Project
+# Sleep-EDF Adaptation
 
 This is a fork of [BINE022/EEGPT](https://github.com/BINE022/EEGPT).
 
 Four scripts were added to the `downstream/` folder to adapt two EEG foundation models
 (**EEGPT** and **LaBraM**) to the Sleep-EDF dataset using unsupervised masked autoencoding,
-then evaluate them with a linear probe for 5-class sleep-stage classification.
-
----
+then evaluate them with a linear probe
 
 ## What was added
 
