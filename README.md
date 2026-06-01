@@ -1,74 +1,146 @@
-# EEGPT: Pretrained Transformer for Universal and Reliable Representation of EEG Signals
+# Sleep-EDF Adaptation — Master's Project
 
-This repository is the official implementation of EEGPT: Pretrained Transformer for Universal and Reliable Representation of EEG Signals. 
-![image](figures/EEGPT.jpg)
+This is a fork of [BINE022/EEGPT](https://github.com/BINE022/EEGPT).
 
-EEGPT, a novel 10-million-parameter pretrained transformer model designed for universal EEG feature extraction. In EEGPT, a mask-based dual self-supervised learning method for efficient feature extraction is designed. Compared to other mask-based self-supervised learning methods, it adds spatio-temporal representation alignment, constructing a self-supervised task on EEG representations with high SNR and rich semantic information instead of raw signals, thus avoiding poor feature quality extracted from low SNR signals.
+Four scripts were added to the `downstream/` folder to adapt two EEG foundation models
+(**EEGPT** and **LaBraM**) to the Sleep-EDF dataset using unsupervised masked autoencoding,
+then evaluate them with a linear probe for 5-class sleep-stage classification.
 
-## Requirements
+---
 
-To install requirements:
+## What was added
+
+```
+downstream/
+├── pretrain_EEGPT_SleepEDF.py      ← unsupervised adaptation of EEGPT
+├── pretrain_LaBraM_SleepEDF.py     ← unsupervised adaptation of LaBraM
+├── eval_EEGPT_SleepEDF.py          ← linear probe / finetune evaluation of EEGPT
+├── eval_LaBraM_SleepEDF.py         ← linear probe / finetune evaluation of LaBraM
+└── Modules/
+    └── channel_aware_masking.py    ← band-stop masking utility (used by all four scripts)
+```
+
+Everything else in the repo is from the original EEGPT codebase and is used as-is
+(model architectures, LaBraM backbone registration, dataset utilities).
+
+---
+
+## Setup
+
+### 1 — Install dependencies
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 
-## Datasets
+### 2 — Set `.env` Variables
 
-Follow the instructions in the [datasets/pretrain/readme.md](datasets/pretrain/readme.md) to download the pre-training EEG dataset.
-Then run the following command to preprocess the data:
+Create a `.env` file at the root of the project:
 
-```bash
-cd datasets/pretrain
-python prepare_pretrain_dataset.py
-```
-Note: If the script encounters an error when running, you can try running it again.
+```env
+# Dataset paths
+DATA_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TrainFold
+TRAIN_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TrainFold
+VAL_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/ValidFold
+TEST_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TestFold
 
-For downstream tasks, follow the instructions in the [datasets/downstream/readme.md](datasets/downstream/readme.md) to download and preprocess the downstream EEG datasets.
-
-## Pretrained Models
-
-You can download pretrained models here:
-
-- [EEG_large](https://figshare.com/s/e37df4f8a907a866df4b) (in the 'Files/EEGPT/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt') trained on mixed dataset (58-channels, 256Hz, 4s time length EEG) using patch size 64. 
-
-For downstream tasks, you should place it into `checkpoint` folder as file name "checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt". To use the model, simply load the checkpoint and pass it to the `EEGPTClassifier` class in "downstream/Modules/models/EEGPT_mcae_finetune.py".
-
-Other pretrained models:
-
-- [BENDR](https://github.com/SPOClab-ca/BENDR) should be placed into `downstream/Modules/models/encoder.pt`.
-- [BIOT](https://github.com/ycq091044/BIOT/tree/main/pretrained-models) should be placed into `downstream/Modules/BIOT/EEG-PREST-16-channels.ckpt`,`downstream/Modules/BIOT/EEG-SHHS+PREST-18-channels.ckpt`,`downstream/Modules/BIOT/EEG-six-datasets-18-channels.ckpt`.
-- [LaBraM](https://github.com/935963004/LaBraM) should be placed into `downstream/Modules/LaBraM/labram-base.pth`.
-
-## PRETRAINING TASK
-
-To pretrain the model(s) in the paper, configure the `pretrain/configs.py` and run this command:
-
-```bash
-cd pretrain
-python run_pretraining.py
+# Model checkpoints
+LABRAM_CKPT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/downstream/Modules/LaBraM/labram-base.pth
+CHECKPOINT_PATH=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 ```
 
-## DOWNSTREAM TASK : TUAB and TUEV
+## Reproducing results
 
-To train the downstream task on TUAB and TUEV,
-configure the `finetune_TUAB_EEGPT.sh` `finetune_TUEV_EEGPT.sh` and run this command:
-
-```bash
-cd downstream_tueg
-pip install -r requirements.txt
-./finetune_TUAB_EEGPT.sh
-./finetune_TUEV_EEGPT.sh
-```
-
-## OTHER DOWNSTREAM TASKS
-
-To train other downstream tasks,
-configure the python scripts in the `downstream` folder and run this command:
+All four scripts are run from the **`downstream/`** folder.
 
 ```bash
 cd downstream
-python linear_probe_{model}_{dataset}.py
-python finetune_{model}_{dataset}.py
 ```
+
+### Step 1 — Unsupervised adaptation (pretraining)
+
+Run once per model per masking strategy.
+The script saves a `backbone.pt` / `encoder.pt` to `downstream/outputs/`.
+
+```bash
+python pretrain_EEGPT_SleepEDF.py
+python pretrain_LaBraM_SleepEDF.py
+```
+
+### Step 2 — Supervised evaluation (linear probe)
+
+Point `ENCODER_PATH` / `BACKBONE_PATH` to the `.pt` saved above, then run:
+
+```bash
+python eval_EEGPT_SleepEDF.py
+python eval_LaBraM_SleepEDF.py
+```
+
+The script trains a linear head on TrainFold, selects the best epoch by `val/acc`,
+and prints Accuracy / Macro-F1 / Cohen's κ on TestFold.
+
+---
+
+## Changing the masking strategy
+
+### pretrain scripts
+
+Open the file and change the constant on the indicated line:
+
+| File | Line | Variable | Default |
+|---|---|---|---|
+| `pretrain_EEGPT_SleepEDF.py` | 29 | `MASK_STRATEGY` | `"theta"` |
+| `pretrain_LaBraM_SleepEDF.py` | 33 | `MASK_STRATEGY` | `"theta"` |
+
+Available strategies:
+
+| Value | Band removed |
+|---|---|
+| `"theta"` | 4 – 8 Hz |
+| `"delta"` | 1 – 5 Hz |
+| `"alpha"` | 8 – 12 Hz |
+| `"beta"` | 13 – 30 Hz |
+| `"beta_upper"` | 20 – 30 Hz |
+| `"random"` | random 4 Hz window each sample |
+| `"none"` | no masking (reconstruction baseline) |
+| `"theta_bw1"` … `"theta_bw12"` | bandwidth grid search from 4 Hz |
+
+### eval scripts
+
+After pretraining, update the path constant to point at the `.pt` you want to evaluate:
+
+| File | Line | Variable | Example |
+|---|---|---|---|
+| `eval_EEGPT_SleepEDF.py` | 29 | `ENCODER_PATH` | `"outputs/eegpt_theta_sleepedf_encoder.pt"` |
+| `eval_LaBraM_SleepEDF.py` | 33 | `BACKBONE_PATH` | `"outputs/labram_theta_sleepedf_backbone.pt"` |
+
+---
+
+## Full run example (theta strategy, both models)
+
+```bash
+cd downstream
+
+# 1. Adapt
+python pretrain_EEGPT_SleepEDF.py    # saves outputs/eegpt_theta_sleepedf_encoder.pt
+python pretrain_LaBraM_SleepEDF.py   # saves outputs/labram_theta_sleepedf_backbone.pt
+
+# 2. Evaluate  (ENCODER_PATH / BACKBONE_PATH already default to theta)
+python eval_EEGPT_SleepEDF.py
+python eval_LaBraM_SleepEDF.py
+```
+
+Final test numbers are printed at the end of each eval run:
+```
+[TEST] Acc=0.XXXX | Macro-F1=0.XXXX | Kappa=0.XXXX
+```
+
+---
+
+## Original EEGPT paper
+
+> *EEGPT: Pretrained Transformer for Universal and Reliable Representation of EEG Signals*
+> [`BINE022/EEGPT`](https://github.com/BINE022/EEGPT)
