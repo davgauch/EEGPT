@@ -12,7 +12,7 @@ import torch
 
 # ── known band ranges (Hz) ────────────────────────────────────────
 BAND_RANGES = {
-    "delta":      (1,  5),
+    "delta":      (1,  4),
     "theta":      (4,  8),
     "alpha":      (8,  12),
     "beta":       (13, 30),

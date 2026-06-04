@@ -1,10 +1,13 @@
-# Sleep-EDF Adaptation
+# Sleep-EDF Adaptation — Master's Project
 
 This is a fork of [BINE022/EEGPT](https://github.com/BINE022/EEGPT).
 
-Four scripts were added to the `downstream/` folder to adapt two EEG foundation models
-(**EEGPT** and **LaBraM**) to the Sleep-EDF dataset using unsupervised masked autoencoding,
-then evaluate them with a linear probe
+Six files were added to the `downstream/` folder to adapt two EEG foundation models
+(**EEGPT** and **LaBraM**) to Sleep-EDF via unsupervised masked autoencoding, evaluate
+them with a linear probe, run multi-seed significance tests, and analyse intrinsic
+representation quality.
+
+---
 
 ## What was added
 
@@ -14,12 +17,14 @@ downstream/
 ├── pretrain_LaBraM_SleepEDF.py     ← unsupervised adaptation of LaBraM
 ├── eval_EEGPT_SleepEDF.py          ← linear probe / finetune evaluation of EEGPT
 ├── eval_LaBraM_SleepEDF.py         ← linear probe / finetune evaluation of LaBraM
+├── run_significance_test.py        ← multi-seed significance test (both models)
+├── analyze_representations.py      ← unsupervised representation quality analysis
 └── Modules/
-    └── channel_aware_masking.py    ← band-stop masking utility (used by all four scripts)
+    └── channel_aware_masking.py    ← band-stop masking utility (used by all scripts)
 ```
 
-Everything else in the repo is from the original EEGPT codebase and is used as-is
-(model architectures, LaBraM backbone registration, dataset utilities).
+Everything else is from the original EEGPT codebase (architectures, LaBraM
+registration, dataset utilities) and is used unchanged.
 
 ---
 
@@ -28,117 +33,153 @@ Everything else in the repo is from the original EEGPT codebase and is used as-i
 ### 1 — Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 2 — Set .env Variables
 
-### 2 — Set `.env` Variables
-
-Create a `.env` file at the root of the project:
+Create a `.env` file in the `downstream/` folder with the paths below.
+All weights and datasets are already on the server — no downloads needed.
 
 ```env
-# Dataset paths
-DATA_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TrainFold
 TRAIN_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TrainFold
 VAL_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/ValidFold
 TEST_ROOT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/datasets/downstream/sleep_edf/TestFold
-
-# Model checkpoints
-LABRAM_CKPT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/downstream/Modules/LaBraM/labram-base.pth
 CHECKPOINT_PATH=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
+LABRAM_CKPT=/net/inltitan2.epfl.ch/scratch2/tzhu/EEGPT/downstream/Modules/LaBraM/labram-base.pth
+NUM_WORKERS=8
 ```
 
-## Reproducing results
+---
 
-All four scripts are run from the **`downstream/`** folder.
+## Running
+
+All scripts are run from the **`downstream/`** folder.
 
 ```bash
 cd downstream
 ```
 
-### Step 1 — Unsupervised adaptation (pretraining)
-
-Run once per model per masking strategy.
-The script saves a `backbone.pt` / `encoder.pt` to `downstream/outputs/`.
+### Step 1 — Unsupervised adaptation
 
 ```bash
-python pretrain_EEGPT_SleepEDF.py
-python pretrain_LaBraM_SleepEDF.py
+python pretrain_EEGPT_SleepEDF.py  --strategy theta
+python pretrain_LaBraM_SleepEDF.py --strategy theta
 ```
 
-### Step 2 — Supervised evaluation (linear probe)
+Saves `outputs/eegpt_theta_seed7_encoder.pt` and `outputs/labram_theta_seed7_backbone.pt`.
+The best checkpoint by `train/loss` is used. The epoch `.ckpt` is kept but only
+the encoder/backbone weights are exported to the `.pt` file.
 
-Point `ENCODER_PATH` / `BACKBONE_PATH` to the `.pt` saved above, then run:
+### Step 2 — Supervised evaluation
 
 ```bash
-python eval_EEGPT_SleepEDF.py
-python eval_LaBraM_SleepEDF.py
+python eval_EEGPT_SleepEDF.py  --encoder_path  outputs/eegpt_theta_seed7_encoder.pt
+python eval_LaBraM_SleepEDF.py --backbone_path outputs/labram_theta_seed7_backbone.pt
 ```
 
-The script trains a linear head on TrainFold, selects the best epoch by `val/acc`,
-and prints Accuracy / Macro-F1 / Cohen's κ on TestFold.
+Trains a linear head on TrainFold, selects the best epoch by `val/acc`, and tests
+on TestFold. Final numbers (Accuracy / Macro-F1 / Cohen's κ) are printed and saved
+as a JSON file alongside the weights for use by the significance test.
 
 ---
 
-## Changing the masking strategy
+## Masking strategies
 
-### pretrain scripts
-
-Open the file and change the constant on the indicated line:
-
-| File | Line | Variable | Default |
-|---|---|---|---|
-| `pretrain_EEGPT_SleepEDF.py` | 29 | `MASK_STRATEGY` | `"theta"` |
-| `pretrain_LaBraM_SleepEDF.py` | 33 | `MASK_STRATEGY` | `"theta"` |
-
-Available strategies:
+Pass any strategy name to `--strategy`:
 
 | Value | Band removed |
 |---|---|
-| `"theta"` | 4 – 8 Hz |
-| `"delta"` | 1 – 5 Hz |
-| `"alpha"` | 8 – 12 Hz |
-| `"beta"` | 13 – 30 Hz |
-| `"beta_upper"` | 20 – 30 Hz |
-| `"random"` | random 4 Hz window each sample |
-| `"none"` | no masking (reconstruction baseline) |
-| `"theta_bw1"` … `"theta_bw12"` | bandwidth grid search from 4 Hz |
-
-### eval scripts
-
-After pretraining, update the path constant to point at the `.pt` you want to evaluate:
-
-| File | Line | Variable | Example |
-|---|---|---|---|
-| `eval_EEGPT_SleepEDF.py` | 29 | `ENCODER_PATH` | `"outputs/eegpt_theta_sleepedf_encoder.pt"` |
-| `eval_LaBraM_SleepEDF.py` | 33 | `BACKBONE_PATH` | `"outputs/labram_theta_sleepedf_backbone.pt"` |
+| `theta` | 4 – 8 Hz |
+| `delta` | 1 – 5 Hz |
+| `alpha` | 8 – 12 Hz |
+| `beta` | 13 – 30 Hz |
+| `beta_upper` | 20 – 30 Hz |
+| `random` | random 4 Hz window, resampled each sample |
+| `none` | no masking — reconstruction baseline |
+| `theta_bw1` … `theta_bw12` | bandwidth grid search from 4 Hz |
 
 ---
 
-## Full run example (theta strategy, both models)
+## Significance testing
+
+`run_significance_test.py` One full pretrain + eval
+per (strategy, seed) pair. For each run it trains a fresh encoder if the weights
+don't already exist, runs the linear probe evaluation if the JSON results don't
+already exist, then collects all results and runs pairwise **paired t-test** +
+**Wilcoxon signed-rank test**.
 
 ```bash
-cd downstream
+# Compare theta vs random vs none, 5 seeds, EEGPT
+python run_significance_test.py \
+    --model eegpt \
+    --strategies theta random none \
+    --n_seeds 5
 
-# 1. Adapt
-python pretrain_EEGPT_SleepEDF.py    # saves outputs/eegpt_theta_sleepedf_encoder.pt
-python pretrain_LaBraM_SleepEDF.py   # saves outputs/labram_theta_sleepedf_backbone.pt
-
-# 2. Evaluate  (ENCODER_PATH / BACKBONE_PATH already default to theta)
-python eval_EEGPT_SleepEDF.py
-python eval_LaBraM_SleepEDF.py
+# Same for LaBraM
+python run_significance_test.py \
+    --model labram \
+    --strategies theta random none \
+    --n_seeds 5
 ```
 
-Final test numbers are printed at the end of each eval run:
-```
-[TEST] Acc=0.XXXX | Macro-F1=0.XXXX | Kappa=0.XXXX
-```
+Key options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--model` | required | `eegpt` or `labram` |
+| `--strategies` | required | one or more strategy names |
+| `--n_seeds` | 5 | number of seeds (seeds: start, start+1, …) |
+| `--start_seed` | 42 | first seed value |
+| `--pretrain_epochs` | 30 | epochs per pretrain run (use 50 for final results) |
+| `--eval_mode` | `linear_probe` | `linear_probe` or `finetune` |
+| `--output_dir` | `outputs` | where weights and eval JSONs are saved |
+| `--results_dir` | `significance_results` | where the summary JSON is saved |
+| `--skip_training` | off | skip pretrain; only (re-)evaluate existing weights |
+| `--retrain_strategies` | none | force retrain specific strategies even if weights exist |
 
 ---
 
-## Original EEGPT paper
+## Representation analysis
+
+`analyze_representations.py` evaluates intrinsic representation quality without
+labels. It is a purely unsupervised check of whether different masking strategies
+create meaningfully different embedding spaces.
+
+**One encoder per strategy** is sufficient for a qualitative comparison.
+If you have already run `run_significance_test.py`, pass all seed values to
+average metrics across seeds for a more robust estimate (mean ± std).
+
+```bash
+# Single encoder per strategy (default seed 42)
+python analyze_representations.py --model eegpt  --strategies theta random none delta alpha
+python analyze_representations.py --model labram --strategies theta random none delta alpha
+
+# Reuse encoders already trained by run_significance_test.py (5 seeds)
+python analyze_representations.py --model eegpt  --strategies theta random none \
+    --seeds 42 43 44 45 46
+```
+
+Five metrics are reported for each strategy:
+
+| Metric | Direction | What it measures |
+|---|---|---|
+| Silhouette | ↑ | Cluster compactness vs separation |
+| kNN accuracy | ↑ | Non-parametric class separability |
+| W/B ratio | ↓ | Within-class / between-class variance |
+| Collapse | ↑ | Mean std of embedding dims (0 = collapsed) |
+| Separation | ↑ | Mean centroid-to-centroid distance |
+
+Results are saved to `outputs/{model}_representation_quality.json`.
+
+---
+
+## Hardware
+
+All experiments run on a single NVIDIA GPU with mixed precision (`float16`).
+---
+
+## Original paper
 
 > *EEGPT: Pretrained Transformer for Universal and Reliable Representation of EEG Signals*
 > [`BINE022/EEGPT`](https://github.com/BINE022/EEGPT)
