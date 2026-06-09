@@ -1,4 +1,4 @@
-# Sleep-EDF Adaptation — Master's Project
+# Sleep-EDF Adaptation of EEGPT and LaBraM models
 
 This is a fork of [BINE022/EEGPT](https://github.com/BINE022/EEGPT).
 
