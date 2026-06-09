@@ -91,7 +91,7 @@ Pass any strategy name to `--strategy`:
 | Value | Band removed |
 |---|---|
 | `theta` | 4 – 8 Hz |
-| `delta` | 1 – 5 Hz |
+| `delta` | 1 – 4 Hz |
 | `alpha` | 8 – 12 Hz |
 | `beta` | 13 – 30 Hz |
 | `beta_upper` | 20 – 30 Hz |
@@ -177,6 +177,7 @@ Results are saved to `outputs/{model}_representation_quality.json`.
 ## Hardware
 
 All experiments run on a single NVIDIA GPU with mixed precision (`float16`).
+
 ---
 
 ## Original paper
