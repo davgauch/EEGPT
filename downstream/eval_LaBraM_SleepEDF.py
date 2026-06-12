@@ -1,13 +1,9 @@
-"""
-eval_LaBraM_SleepEDF.py
-Supervised evaluation of the LaBraM backbone adapted by pretrain_LaBraM_SleepEDF.py.
+"""Supervised evaluation of the LaBraM backbone adapted by pretrain_LaBraM_SleepEDF.py.
 
 Two modes (--eval_mode):
-  linear_probe : backbone FROZEN — measures representation quality in isolation.
-  finetune     : entire backbone updated — higher ceiling, confounds representation quality.
-
+  linear_probe : backbone FROZEN 
+  finetune     : entire backbone updated
 Usage:
-    python eval_LaBraM_SleepEDF.py --backbone_path outputs/labram_theta_seed7_backbone.pt
     python eval_LaBraM_SleepEDF.py --backbone_path outputs/labram_theta_seed42_backbone.pt --seed 42
 """
 
@@ -29,12 +25,10 @@ from timm.models import create_model
 
 torch.set_float32_matmul_precision("medium")
 
-# ── paths (set in .env) ───────────────────────────────────────────
 TRAIN_ROOT = os.getenv("TRAIN_ROOT")
 VAL_ROOT   = os.getenv("VAL_ROOT")
 TEST_ROOT  = os.getenv("TEST_ROOT")
 
-# ── fixed hyperparameters ─────────────────────────────────────────
 N_CLASSES   = 5
 N_CHANNELS  = 2
 SFREQ       = 200
@@ -48,7 +42,6 @@ NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
 LABEL_MAP = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4}
 
 
-# ── helpers ───────────────────────────────────────────────────────
 def to_labram_input(x: torch.Tensor) -> torch.Tensor:
     """(B, C, T) → (B, C, N_patches, patch_len)  — zero-mean then reshaped."""
     x = x - x.mean(dim=-1, keepdim=True)
@@ -56,7 +49,6 @@ def to_labram_input(x: torch.Tensor) -> torch.Tensor:
     return x.reshape(x.shape[0], x.shape[1], N_PATCHES, PATCH_LEN)
 
 
-# ── dataset ───────────────────────────────────────────────────────
 class SleepEDFLabelled(Dataset):
     def __init__(self, root: str):
         self.samples = []
@@ -76,7 +68,6 @@ class SleepEDFLabelled(Dataset):
                torch.tensor(label, dtype=torch.long)
 
 
-# ── classifier ────────────────────────────────────────────────────
 class LaBraMClassifier(pl.LightningModule):
     def __init__(self, backbone_path: str, eval_mode: str = "linear_probe",
                  seed: int = 42):
@@ -86,12 +77,11 @@ class LaBraMClassifier(pl.LightningModule):
         self.test_outputs = []
         self._test_metrics = {}
 
-        # ── backbone ──────────────────────────────────────────────
         self.backbone = create_model(
             "labram_base_patch200_200",
             qkv_bias=False, rel_pos_bias=True, num_classes=0,
             drop_rate=0.0, drop_path_rate=0.1, attn_drop_rate=0.0,
-            drop_block_rate=None, use_mean_pooling=True,   # mean pool → (B, D)
+            drop_block_rate=None, use_mean_pooling=True,  
             init_scale=0.001, use_rel_pos_bias=True,
             use_abs_pos_emb=True, init_values=0.1,
         )
@@ -181,7 +171,6 @@ class LaBraMClassifier(pl.LightningModule):
         return {"optimizer": opt, "lr_scheduler": {"scheduler": sch, "interval": "epoch"}}
 
 
-# ── run ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate LaBraM on Sleep-EDF")
     parser.add_argument("--backbone_path", required=True,
@@ -223,7 +212,6 @@ if __name__ == "__main__":
 
     trainer.fit(model, train_loader, val_loader)
 
-    # Test with best validation checkpoint
     best_ckpt = ckpt_cb.best_model_path
     if best_ckpt:
         print(f"\n[Eval] Loading best checkpoint (val/acc={ckpt_cb.best_model_score:.4f})")

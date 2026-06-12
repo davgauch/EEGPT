@@ -1,10 +1,7 @@
-"""
-pretrain_EEGPT_SleepEDF.py
-Unsupervised domain adaptation of EEGPT on Sleep-EDF via masked autoencoding.
+"""Unsupervised domain adaptation of EEGPT on Sleep-EDF via masked autoencoding.
 Reconstruction target: raw waveform per patch (time-domain MSE).
 
 Usage:
-    python pretrain_EEGPT_SleepEDF.py --strategy theta
     python pretrain_EEGPT_SleepEDF.py --strategy random --seed 42 --epochs 30
 """
 
@@ -22,11 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from Modules.channel_aware_masking import apply_bandstop_mask
 from Modules.models.EEGPT_mcae import EEGTransformer
 
-# ── paths (set in .env) ───────────────────────────────────────────
+
 DATA_ROOT       = os.getenv("TRAIN_ROOT")
 CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
 
-# ── fixed hyperparameters ─────────────────────────────────────────
 SFREQ       = 100
 N_CHANNELS  = 2
 SEG_SECONDS = 30
@@ -36,13 +32,12 @@ LR          = 1e-4
 NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
 
 
-# ── reproducibility ───────────────────────────────────────────────
+
 def set_seed(seed: int):
     random.seed(seed); np.random.seed(seed)
     torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
 
 
-# ── helpers ───────────────────────────────────────────────────────
 def patchify(x: torch.Tensor, patch_size: int) -> torch.Tensor:
     """(B, C, T) → (B, C*N_patches, patch_size)"""
     B, C, T = x.shape
@@ -50,7 +45,6 @@ def patchify(x: torch.Tensor, patch_size: int) -> torch.Tensor:
     return x.reshape(B, C, n, patch_size).reshape(B, C * n, patch_size)
 
 
-# ── dataset ───────────────────────────────────────────────────────
 class MaskedSleepEDF(torch.utils.data.Dataset):
     """
     Returns (x_masked, x_original, patch_mask).
@@ -90,7 +84,6 @@ class MaskedSleepEDF(torch.utils.data.Dataset):
         return x_masked, x_orig, patch_mask
 
 
-# ── model ─────────────────────────────────────────────────────────
 class PatchDecoder(nn.Module):
     """(B, N, D) → (B, N, patch_size)"""
     def __init__(self, embed_dim: int, patch_size: int):
@@ -110,7 +103,6 @@ class EEGPTPretrain(pl.LightningModule):
         self.save_hyperparameters()
         self.patch_size = PATCH_SIZE
 
-        # ── encoder ───────────────────────────────────────────────
         self.encoder = EEGTransformer(
             img_size=[N_CHANNELS, SFREQ * SEG_SECONDS],
             patch_size=PATCH_SIZE, embed_dim=512, depth=8, num_heads=8)
@@ -163,7 +155,6 @@ class EEGPTPretrain(pl.LightningModule):
         return {"optimizer": opt, "lr_scheduler": {"scheduler": sch, "interval": "step"}}
 
 
-# ── run ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pretrain EEGPT on Sleep-EDF")
     parser.add_argument("--strategy",   default="theta",
@@ -201,7 +192,7 @@ if __name__ == "__main__":
 
     trainer.fit(model, loader)
 
-    # Extract encoder weights from the best checkpoint (not the last epoch)
+    # Extract encoder weights from the best checkpoint 
     best = torch.load(ckpt_cb.best_model_path, map_location="cpu", weights_only=False)
     encoder_state = {k[len("encoder."):]: v
                      for k, v in best["state_dict"].items()

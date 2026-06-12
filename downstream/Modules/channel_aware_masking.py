@@ -1,16 +1,11 @@
 """
-channel_aware_masking.py
 Frequency-domain band-stop masking for EEG signals.
-
-apply_bandstop_mask(x, strategy, sfreq) zeroes out a frequency band in the
-FFT of the input signal, then reconstructs the time-domain waveform.
-The 'random' strategy picks a random 4 Hz window at each call.
 """
 
 import numpy as np
 import torch
 
-# ── known band ranges (Hz) ────────────────────────────────────────
+
 BAND_RANGES = {
     "delta":      (1,  4),
     "theta":      (4,  8),
@@ -21,29 +16,16 @@ BAND_RANGES = {
     "theta_bw1":  (4,  5),    # 1 Hz
     "theta_bw2":  (4,  6),    # 2 Hz
     "theta_bw3":  (4,  7),    # 3 Hz
-    "theta_bw4":  (4,  8),    # 4 Hz  (same as theta)
+    "theta_bw4":  (4,  8),    # 4 Hz  
     "theta_bw5":  (4,  9),    # 5 Hz
     "theta_bw6":  (4,  10),   # 6 Hz
-    "theta_bw8":  (4,  12),   # 8 Hz  (theta + alpha)
+    "theta_bw8":  (4,  12),   # 8 Hz  
     "theta_bw10": (4,  14),   # 10 Hz
-    "theta_bw12": (4,  16),   # 12 Hz (theta + alpha + low beta)
+    "theta_bw12": (4,  16),   # 12 Hz 
 }
 
 
 def apply_bandstop_mask(x: np.ndarray, strategy: str, sfreq: int) -> np.ndarray:
-    """
-    Zero out a frequency band in the signal via FFT.
-
-    Parameters
-    ----------
-    x        : (C, T) float32 array
-    strategy : key in BAND_RANGES, "random", or "none"
-    sfreq    : sampling frequency in Hz
-
-    Returns
-    -------
-    Masked signal as a (C, T) float32 array.
-    """
     if strategy == "none":
         return x.copy()
 

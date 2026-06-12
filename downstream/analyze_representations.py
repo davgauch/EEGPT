@@ -1,7 +1,7 @@
 """
 analyze_representations.py
 Evaluates intrinsic representation quality of adapted encoders across masking
-strategies — no labels used during analysis.
+strategies (no labels used during analysis).
 
 Metrics used:
   silhouette     : cluster quality in embedding space           (↑ better)
@@ -11,11 +11,6 @@ Metrics used:
   separation     : mean centroid-to-centroid distance          (↑ better)
 
 Usage:
-    # Single encoder per strategy (default seed 7, from a standalone pretrain)
-    python analyze_representations.py --model eegpt  --strategies theta random none
-    python analyze_representations.py --model labram --strategies theta random none
-
-    # Reuse all encoders already trained by run_significance_test.py (5 seeds)
     python analyze_representations.py --model eegpt  --strategies theta random none \\
         --seeds 42 43 44 45 46
 """
@@ -40,17 +35,17 @@ from Modules.models.EEGPT_mcae import EEGTransformer
 import Modules.LaBraM.modeling_finetune          
 from timm.models import create_model
 
-# ── paths (set in .env) ───────────────────────────────────────────
+
 TEST_ROOT = os.getenv("TEST_ROOT")
 
-# ── EEGPT constants ───────────────────────────────────────────────
+#  EEGPT constants
 EEGPT_N_CHANNELS  = 2
 EEGPT_SFREQ       = 100
 EEGPT_SEG_SECONDS = 30
 EEGPT_PATCH_SIZE  = 50
 EEGPT_EMBED_DIM   = 512
 
-# ── LaBraM constants ──────────────────────────────────────────────
+# LaBraM constants
 LABRAM_N_CHANNELS  = 2
 LABRAM_SFREQ       = 200
 LABRAM_SEG_SECONDS = 15
@@ -60,7 +55,7 @@ LABRAM_N_PATCHES   = LABRAM_SEG_SECONDS   # 15
 LABEL_MAP = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4}
 
 
-# ── LaBraM input preprocessing ────────────────────────────────────
+# LaBraM input preprocessing
 def to_labram_input(x: torch.Tensor) -> torch.Tensor:
     """(B, C, T) → (B, C, N_patches, patch_len) — zero-mean then reshaped."""
     x = x - x.mean(dim=-1, keepdim=True)
@@ -68,7 +63,6 @@ def to_labram_input(x: torch.Tensor) -> torch.Tensor:
     return x.reshape(x.shape[0], x.shape[1], LABRAM_N_PATCHES, LABRAM_PATCH_LEN)
 
 
-# ── dataset ───────────────────────────────────────────────────────
 class SleepEDFLabelled(Dataset):
     def __init__(self, root: str):
         self.samples = []
@@ -87,7 +81,7 @@ class SleepEDFLabelled(Dataset):
         return torch.load(path, weights_only=False).float(), label
 
 
-# ── model loading ─────────────────────────────────────────────────
+
 def load_eegpt(strategy: str, seed: int, output_dir: str,
                device: torch.device) -> torch.nn.Module:
     path = os.path.join(output_dir, f"eegpt_{strategy}_seed{seed}_encoder.pt")
@@ -124,7 +118,7 @@ def load_labram(strategy: str, seed: int, output_dir: str,
     return model.to(device)
 
 
-# ── embedding extraction ──────────────────────────────────────────
+
 @torch.no_grad()
 def extract_embeddings(model: torch.nn.Module, loader: DataLoader,
                        model_name: str, device: torch.device):
@@ -144,7 +138,7 @@ def extract_embeddings(model: torch.nn.Module, loader: DataLoader,
     return np.vstack(all_emb), np.array(all_labels)
 
 
-# ── metrics ───────────────────────────────────────────────────────
+
 def silhouette(emb, labels) -> float:
     try:
         return float(silhouette_score(emb, labels, metric="euclidean",
@@ -200,7 +194,6 @@ def compute_metrics(emb, labels) -> dict:
     }
 
 
-# ── per-strategy analysis (aggregated over seeds) ─────────────────
 def analyze_strategy(model_name: str, strategy: str, seeds: list,
                      output_dir: str, loader: DataLoader,
                      device: torch.device) -> dict:
@@ -237,7 +230,7 @@ def analyze_strategy(model_name: str, strategy: str, seeds: list,
     }
 
 
-# ── pairwise interpretation ───────────────────────────────────────
+
 HIGHER_IS_BETTER = {
     "silhouette":     True,
     "knn_accuracy":   True,
@@ -268,7 +261,6 @@ def print_pairwise(results: dict, strategies: list):
         print(f"  ➜ {winner_str} wins on {max(wins_a, wins_b)}/{total} metrics")
 
 
-# ── main ──────────────────────────────────────────────────────────
 METRICS_TABLE = [
     ("silhouette",     "Silhouette  ↑"),
     ("knn_accuracy",   "kNN Acc     ↑"),
@@ -310,7 +302,6 @@ def main():
         if summary:
             results[strategy] = summary
 
-    # ── summary table ─────────────────────────────────────────────
     col = 20
     print(f"\n{'='*80}")
     print(f"  REPRESENTATION QUALITY — {args.model.upper()} on Sleep-EDF")
@@ -332,11 +323,10 @@ def main():
             row += f"{cell:>{col}}"
         print(row)
 
-    # ── pairwise comparison ────────────────────────────────────────
+
     if len(results) >= 2:
         print_pairwise(results, args.strategies)
 
-    # ── save ──────────────────────────────────────────────────────
     out_path = os.path.join(args.output_dir,
                             f"{args.model}_representation_quality.json")
     with open(out_path, "w") as fp:

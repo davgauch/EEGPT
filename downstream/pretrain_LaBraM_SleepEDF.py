@@ -1,10 +1,7 @@
-"""
-pretrain_LaBraM_SleepEDF.py
-Unsupervised domain adaptation of LaBraM on Sleep-EDF via masked autoencoding.
+"""Unsupervised domain adaptation of LaBraM on Sleep-EDF via masked autoencoding.
 Reconstruction target: per-channel per-patch FFT amplitude (z-score normalised).
 
 Usage:
-    python pretrain_LaBraM_SleepEDF.py --strategy theta
     python pretrain_LaBraM_SleepEDF.py --strategy random --seed 42 --epochs 30
 """
 
@@ -24,18 +21,15 @@ from Modules.channel_aware_masking import apply_bandstop_mask
 import Modules.LaBraM.modeling_finetune          # registers 'labram_base_patch200_200'
 from timm.models import create_model
 
-# ── paths (set in .env) ───────────────────────────────────────────
-DATA_ROOT   = os.getenv("TRAIN_ROOT")
 LABRAM_CKPT = os.getenv("LABRAM_CKPT")
 
-# ── fixed hyperparameters ─────────────────────────────────────────
 SFREQ       = 200
 SEG_SECONDS = 15
 PATCH_LEN   = 200
-N_PATCHES   = SEG_SECONDS               # 15 patches/channel (15 × 200 = 3 000 samples)
+N_PATCHES   = SEG_SECONDS             
 N_CHANNELS  = 2
-N_TOK       = N_CHANNELS * N_PATCHES    # 30 total patch tokens
-FFT_BINS    = PATCH_LEN // 2 + 1       # 101 frequency bins
+N_TOK       = N_CHANNELS * N_PATCHES 
+FFT_BINS    = PATCH_LEN // 2 + 1     
 
 BATCH_SIZE  = 32
 LR          = 1e-4
@@ -44,13 +38,12 @@ NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
 torch.set_float32_matmul_precision("medium")
 
 
-# ── reproducibility ───────────────────────────────────────────────
+
 def set_seed(seed: int):
     random.seed(seed); np.random.seed(seed)
     torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
 
 
-# ── helpers ───────────────────────────────────────────────────────
 def to_labram_input(x: torch.Tensor) -> torch.Tensor:
     """(B, C, T) → (B, C, N_patches, patch_len)  — zero-mean then reshaped."""
     x = x - x.mean(dim=-1, keepdim=True)
@@ -72,7 +65,6 @@ def fft_amplitude_target(x_patches: torch.Tensor) -> torch.Tensor:
     return (amp - mu) / std
 
 
-# ── dataset ───────────────────────────────────────────────────────
 class MaskedSleepEDF(torch.utils.data.Dataset):
     """
     Returns (x_masked, x_original, patch_mask).
@@ -93,7 +85,7 @@ class MaskedSleepEDF(torch.utils.data.Dataset):
     def __len__(self): return len(self.files)
 
     def __getitem__(self, idx):
-        x_orig = torch.load(self.files[idx], weights_only=False).float()   # (C, T)
+        x_orig = torch.load(self.files[idx], weights_only=False).float()  
 
         if self.strategy != "none":
             x_masked = torch.tensor(
@@ -102,21 +94,21 @@ class MaskedSleepEDF(torch.utils.data.Dataset):
         else:
             x_masked = x_orig.clone()
 
-        # Per-token mask: True = this channel-patch lost significant spectral energy
+    
         def _to_patches(x):
             xr = F.interpolate(x.unsqueeze(0), SFREQ * SEG_SECONDS,
                                mode="nearest").squeeze(0)
-            return xr.reshape(xr.shape[0], N_PATCHES, PATCH_LEN)   # (C, 15, 200)
+            return xr.reshape(xr.shape[0], N_PATCHES, PATCH_LEN)   
 
         p_orig, p_masked = _to_patches(x_orig), _to_patches(x_masked)
         amp_diff     = (torch.fft.rfft(p_orig, dim=-1).abs() -
                         torch.fft.rfft(p_masked, dim=-1).abs())
-        patch_energy = amp_diff.abs().mean(dim=-1).reshape(-1)       # (30,)
+        patch_energy = amp_diff.abs().mean(dim=-1).reshape(-1)     
         patch_mask   = patch_energy > patch_energy.median()
         return x_masked, x_orig, patch_mask
 
 
-# ── model ─────────────────────────────────────────────────────────
+
 class PatchDecoder(nn.Module):
     """(B, N, D) → (B, N, FFT_BINS)"""
     def __init__(self, embed_dim: int, out_dim: int):
@@ -135,7 +127,6 @@ class LaBraMPretrain(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        # ── backbone ──────────────────────────────────────────────
         self.backbone = create_model(
             "labram_base_patch200_200",
             qkv_bias=False, rel_pos_bias=True, num_classes=0,
@@ -145,7 +136,6 @@ class LaBraMPretrain(pl.LightningModule):
             use_abs_pos_emb=True, init_values=0.1,
         )
 
-        # Load pretrained weights; skip shape mismatches (patch/spatial embed)
         ckpt        = torch.load(LABRAM_CKPT, weights_only=False)
         state       = {k[len("student."):]: v
                        for k, v in ckpt["model"].items()
@@ -157,7 +147,6 @@ class LaBraMPretrain(pl.LightningModule):
         print(f"[Backbone] Loaded {len(state_fit)} tensors | missing {len(missing)}")
 
         # Hook on last transformer block to capture the full token sequence
-        # (use_mean_pooling=False keeps tokens alive but the head still discards them)
         self._hook_output = None
         self.backbone.blocks[-1].register_forward_hook(
             lambda m, i, o: setattr(self, "_hook_output", o))
@@ -205,7 +194,6 @@ class LaBraMPretrain(pl.LightningModule):
         return {"optimizer": opt, "lr_scheduler": {"scheduler": sch, "interval": "step"}}
 
 
-# ── run ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pretrain LaBraM on Sleep-EDF")
     parser.add_argument("--strategy",   default="theta",
@@ -243,7 +231,6 @@ if __name__ == "__main__":
 
     trainer.fit(model, loader)
 
-    # Extract backbone weights from the best checkpoint (not the last epoch)
     best = torch.load(ckpt_cb.best_model_path, map_location="cpu", weights_only=False)
     backbone_state = {k[len("backbone."):]: v
                       for k, v in best["state_dict"].items()

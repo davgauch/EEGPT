@@ -1,13 +1,10 @@
-"""
-eval_EEGPT_SleepEDF.py
-Supervised evaluation of the EEGPT encoder adapted by pretrain_EEGPT_SleepEDF.py.
+"""Supervised evaluation of the EEGPT encoder adapted by pretrain_EEGPT_SleepEDF.py.
 
 Two modes (--eval_mode):
-  linear_probe : encoder FROZEN — measures representation quality in isolation.
-  finetune     : entire encoder updated — higher ceiling, confounds representation quality.
+  linear_probe : encoder FROZEN
+  finetune     : entire encoder updated 
 
 Usage:
-    python eval_EEGPT_SleepEDF.py --encoder_path outputs/eegpt_theta_seed7_encoder.pt
     python eval_EEGPT_SleepEDF.py --encoder_path outputs/eegpt_theta_seed42_encoder.pt --seed 42
 """
 
@@ -25,12 +22,10 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from Modules.models.EEGPT_mcae import EEGTransformer
 
-# ── paths (set in .env) ───────────────────────────────────────────
 TRAIN_ROOT = os.getenv("TRAIN_ROOT")
 VAL_ROOT   = os.getenv("VAL_ROOT")
 TEST_ROOT  = os.getenv("TEST_ROOT")
 
-# ── fixed hyperparameters ─────────────────────────────────────────
 N_CLASSES   = 5
 N_CHANNELS  = 2
 SFREQ       = 100
@@ -43,8 +38,6 @@ NUM_WORKERS = int(os.getenv("NUM_WORKERS", "4"))
 
 LABEL_MAP = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4}
 
-
-# ── dataset ───────────────────────────────────────────────────────
 class SleepEDFLabelled(Dataset):
     def __init__(self, root: str):
         self.samples = []
@@ -64,7 +57,6 @@ class SleepEDFLabelled(Dataset):
                torch.tensor(label, dtype=torch.long)
 
 
-# ── classifier ────────────────────────────────────────────────────
 class EEGPTClassifier(pl.LightningModule):
     def __init__(self, encoder_path: str, eval_mode: str = "linear_probe",
                  seed: int = 42):
@@ -74,7 +66,6 @@ class EEGPTClassifier(pl.LightningModule):
         self.test_outputs = []
         self._test_metrics = {}
 
-        # ── encoder ───────────────────────────────────────────────
         self.encoder = EEGTransformer(
             img_size=[N_CHANNELS, SFREQ * SEG_SECONDS],
             patch_size=PATCH_SIZE, embed_dim=EMBED_DIM, depth=8, num_heads=8)
@@ -158,7 +149,6 @@ class EEGPTClassifier(pl.LightningModule):
         return {"optimizer": opt, "lr_scheduler": {"scheduler": sch, "interval": "epoch"}}
 
 
-# ── run ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate EEGPT on Sleep-EDF")
     parser.add_argument("--encoder_path", required=True,

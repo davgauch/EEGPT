@@ -1,6 +1,4 @@
-"""
-run_significance_test.py
-Multi-seed significance testing for Sleep-EDF masking strategies.
+"""Multi-seed significance testing for Sleep-EDF masking strategies.
 
 Usage:
     python run_significance_test.py --model eegpt --strategies theta random none --n_seeds 5
@@ -23,7 +21,6 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ── file-naming convention (must match the pretrain/eval scripts) ─
 def weights_path(model: str, strategy: str, seed: int, output_dir: str) -> str:
     suffix = "encoder" if model == "eegpt" else "backbone"
     return os.path.join(output_dir, f"{model}_{strategy}_seed{seed}_{suffix}.pt")
@@ -87,8 +84,6 @@ def run_eval(model: str, strategy: str, seed: int, output_dir: str,
         return False
     return True
 
-
-# ── statistics ────────────────────────────────────────────────────
 def pairwise_test(scores_a: list, scores_b: list, label_a: str, label_b: str,
                   metric: str) -> dict:
     n = min(len(scores_a), len(scores_b))
@@ -130,8 +125,6 @@ def print_comparison(res: dict):
     print(f"    Wilcoxon: W={res['w_stat']:.1f}   p={res['p_wilcoxon']:.4f}"
           f"{sig_marker(res['p_wilcoxon'])}")
 
-
-# ── main ─────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Multi-seed significance test")
     parser.add_argument("--model",      required=True, choices=["eegpt", "labram"])
@@ -166,7 +159,7 @@ def main():
     log.info(f"Seeds:      {seeds}")
     log.info(f"Total runs: {total_runs}")
 
-    # ── collect results ──────────────────────────────────────────
+
     all_results = {s: [] for s in args.strategies}
     run_idx = 0
 
@@ -180,7 +173,7 @@ def main():
             w_path = weights_path(args.model, strategy, seed, args.output_dir)
             j_path = eval_json_path(args.model, strategy, seed, args.output_dir)
 
-            # ── pretrain if needed ────────────────────────────────
+            # pretrain if needed (or if forced) 
             force_retrain = strategy in (args.retrain_strategies or [])
             if force_retrain and os.path.isfile(w_path):
                 log.info(f"Forcing retrain for {strategy} (--retrain_strategies)")
@@ -197,7 +190,6 @@ def main():
             else:
                 log.info(f"Weights already exist — skipping pretrain")
 
-            # ── eval if needed ────────────────────────────────────
             if not os.path.isfile(j_path):
                 ok = run_eval(args.model, strategy, seed, args.output_dir, args.eval_mode)
                 if not ok:
@@ -206,7 +198,6 @@ def main():
             else:
                 log.info(f"Eval JSON already exists — skipping eval")
 
-            # ── load results ──────────────────────────────────────
             with open(j_path) as fp:
                 metrics = json.load(fp)
             metrics["seed"] = seed
@@ -215,7 +206,6 @@ def main():
                      f"F1={metrics['f1_macro']:.4f}  "
                      f"Kappa={metrics['kappa']:.4f}")
 
-    # ── summary table ─────────────────────────────────────────────
     print(f"\n\n{'='*70}")
     print(f"  RESULTS SUMMARY — {args.model.upper()} on Sleep-EDF")
     print(f"{'='*70}")
@@ -233,7 +223,7 @@ def main():
               f"{np.mean(f1s):.4f}±{np.std(f1s):.4f}  "
               f"{np.mean(kappas):.4f}±{np.std(kappas):.4f}")
 
-    # ── pairwise statistical tests ────────────────────────────────
+
     all_comparisons = []
     print(f"\n{'='*70}")
     print(f"  PAIRWISE TESTS  (* p<0.05  ** p<0.01)")
@@ -256,7 +246,6 @@ def main():
             print_comparison(res)
             all_comparisons.append(res)
 
-    # ── save full results ─────────────────────────────────────────
     summary = {
         "model":      args.model,
         "strategies": args.strategies,
