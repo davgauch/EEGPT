@@ -67,15 +67,15 @@ python pretrain_EEGPT_SleepEDF.py  --strategy theta
 python pretrain_LaBraM_SleepEDF.py --strategy theta
 ```
 
-Saves `outputs/eegpt_theta_seed7_encoder.pt` and `outputs/labram_theta_seed7_backbone.pt`.
+Saves `outputs/eegpt_theta_seed42_encoder.pt` and `outputs/labram_theta_seed42_backbone.pt`.
 The best checkpoint by `train/loss` is used. The epoch `.ckpt` is kept but only
 the encoder/backbone weights are exported to the `.pt` file.
 
 ### Step 2 — Supervised evaluation
 
 ```bash
-python eval_EEGPT_SleepEDF.py  --encoder_path  outputs/eegpt_theta_seed7_encoder.pt
-python eval_LaBraM_SleepEDF.py --backbone_path outputs/labram_theta_seed7_backbone.pt
+python eval_EEGPT_SleepEDF.py  --encoder_path  outputs/eegpt_theta_seed42_encoder.pt
+python eval_LaBraM_SleepEDF.py --backbone_path outputs/labram_theta_seed42_backbone.pt
 ```
 
 Trains a linear head on TrainFold, selects the best epoch by `val/acc`, and tests
