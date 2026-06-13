@@ -9,7 +9,7 @@ import torch
 BAND_RANGES = {
     "delta":      (1,  4),
     "theta":      (4,  8),
-    "alpha":      (8,  12),
+    "alpha":      (8,  13),
     "beta":       (13, 30),
     "beta_upper": (20, 30),
     # Bandwidth grid search (all starting at 4 Hz)
